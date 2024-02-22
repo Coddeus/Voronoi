@@ -1,0 +1,6 @@
+/target
+Cargo.lock
+
+/output
+**.mp4
+**.png
