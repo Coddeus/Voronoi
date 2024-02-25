@@ -6,7 +6,7 @@ use vulkano::{
     }, descriptor_set::{allocator::StandardDescriptorSetAllocator, PersistentDescriptorSet, WriteDescriptorSet}, device::{
         physical::PhysicalDeviceType, Device, DeviceCreateInfo, DeviceExtensions, Features, Queue, QueueCreateInfo, QueueFlags
     }, format::Format, image::{view::ImageView, Image, ImageCreateInfo, ImageType, ImageUsage, SampleCount}, instance::{Instance, InstanceCreateFlags, InstanceCreateInfo}, memory::allocator::{AllocationCreateInfo, MemoryAllocator, MemoryTypeFilter, StandardMemoryAllocator}, padded::Padded, pipeline::{
-        graphics::{
+        compute::ComputePipelineCreateInfo, graphics::{
             color_blend::{ColorBlendAttachmentState, ColorBlendState},
             input_assembly::InputAssemblyState,
             multisample::MultisampleState,
@@ -14,32 +14,44 @@ use vulkano::{
             vertex_input::VertexInputState,
             viewport::{Viewport, ViewportState},
             GraphicsPipelineCreateInfo,
-        }, layout::PipelineDescriptorSetLayoutCreateInfo, DynamicState, GraphicsPipeline, Pipeline, PipelineBindPoint, PipelineLayout, PipelineShaderStageCreateInfo
+        }, layout::PipelineDescriptorSetLayoutCreateInfo, ComputePipeline, DynamicState, GraphicsPipeline, Pipeline, PipelineBindPoint, PipelineLayout, PipelineShaderStageCreateInfo
     }, render_pass::{Framebuffer, FramebufferCreateInfo, Subpass}, sync::GpuFuture, VulkanLibrary
 };
 
 
-const POINTS_NUM: u32 = 10000; // More than in the shader
 const WIDTH: u32 = 1920;
 const HEIGHT: u32 = 1080;
-const FRAMES_NUM: u32 = 100;
+const FRAMES_NUM: u32 = 600;
+const FRAMERATE: f32 = 60.0;
+//
+const POINTS_NUM: u32 = 100;
+const POINTS_SPEED: f32 = 0.3;
 
 
-mod vs {
+mod vert_s {
     vulkano_shaders::shader! {
         ty: "vertex",
-        path: "src/.vert",
+        path: "src/shaders/vert.glsl",
     }
 }
-mod fs {
+mod frag_s {
     vulkano_shaders::shader! {
         ty: "fragment",
-        path: "src/.frag",
+        path: "src/shaders/frag.glsl",
+    }
+}
+mod update_s {
+    vulkano_shaders::shader! {
+        ty: "compute",
+        path: "src/shaders/update.glsl",
     }
 }
 
 // Draw frame of a Voronoi animation video.
 fn main() {
+
+    // ---------------------------------------------------------------------------------------------------- Vulkan base initialization, with sample_rate_shading device feature
+
     let library = VulkanLibrary::new().unwrap();
     let instance = Instance::new(
         library,
@@ -97,10 +109,73 @@ fn main() {
     .unwrap();
     let queue = queues.next().unwrap();
 
+    // ---------------------------------------------------------------------------------------------------- Allocators
+
     let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device.clone()));
     let cb_allocator = StandardCommandBufferAllocator::new(device.clone(), Default::default());
     let ds_allocator = StandardDescriptorSetAllocator::new(device.clone(), Default::default());
 
+    // ---------------------------------------------------------------------------------------------------- Buffers & push constants
+
+    // Push constants struct
+    #[derive(BufferContents, Clone)]
+    #[repr(C)]
+    struct General {
+        resolution: [f32; 2],
+        //
+        time: f32,
+        delta_time: f32,
+        //
+        points_num: u32,
+        points_speed: f32,
+    }
+
+    // Points Buffer
+    #[derive(BufferContents, Debug)]
+    #[repr(C)]
+    struct Point {
+        pos: [f32; 2],
+        dir: [f32; 2],
+        color: [f32; 4],
+    }
+
+    let all_points = (0..POINTS_NUM).into_iter().map(|_| {
+        let col = f32();
+        Point {
+            pos: [f32() * WIDTH as f32 / HEIGHT as f32, f32()],
+            dir: [f32()*2.0-1.0, f32()*2.0-1.0],
+            color: [col, 0.0, 0.0, 1.0],
+        }
+}   ).collect::<Vec<Point>>();
+    println!("{:?}", all_points);
+    let points_buffer: Subbuffer<[Point]> = create_buffer(
+        queue.clone(), 
+        memory_allocator.clone(),
+        &cb_allocator,
+        BufferUsage::TRANSFER_DST | BufferUsage::STORAGE_BUFFER,
+        all_points.into_iter(),
+        POINTS_NUM as u64
+    );
+
+    // Output buffer, converted to png image
+    let buf = Buffer::from_iter(
+        memory_allocator.clone(),
+        BufferCreateInfo {
+            usage: BufferUsage::TRANSFER_DST,
+            ..Default::default()
+        },
+        AllocationCreateInfo {
+            memory_type_filter: MemoryTypeFilter::PREFER_HOST
+                | MemoryTypeFilter::HOST_RANDOM_ACCESS,
+            ..Default::default()
+        },
+        (0..WIDTH * HEIGHT * 4).map(|_| 0u8),
+    )
+    .unwrap();
+
+    // ---------------------------------------------------------------------------------------------------- Images
+
+    // Multisample image
     let intermediary = ImageView::new_default(
         Image::new(
             memory_allocator.clone(),
@@ -118,6 +193,7 @@ fn main() {
     )
     .unwrap();
 
+    // Final image & view
     let image = Image::new(
         memory_allocator.clone(),
         ImageCreateInfo {
@@ -133,7 +209,6 @@ fn main() {
         AllocationCreateInfo::default(),
     )
     .unwrap();
-
     let view = ImageView::new_default(image.clone()).unwrap();
 
     let render_pass = vulkano::single_pass_renderpass!(
@@ -169,12 +244,12 @@ fn main() {
     )
     .unwrap();
 
-    let pipeline = {
-        let vs = vs::load(device.clone())
+    let draw_pipeline = {
+        let vs = vert_s::load(device.clone())
             .unwrap()
             .entry_point("main")
             .unwrap();
-        let fs = fs::load(device.clone())
+        let fs = frag_s::load(device.clone())
             .unwrap()
             .entry_point("main")
             .unwrap();
@@ -216,44 +291,9 @@ fn main() {
         )
         .unwrap()
     };
-
-    let viewport = Viewport {
-        offset: [0.0, 0.0],
-        extent: [WIDTH as f32, HEIGHT as f32],
-        depth_range: 0.0..=1.0,
-    };
-
-
-    #[derive(BufferContents)]
-    #[repr(C)]
-    struct General {
-        resolution: [f32; 2],
-        time: f32,
-    }
-    #[derive(BufferContents, Debug)]
-    #[repr(C)]
-    struct Point {
-        pos: Padded<[f32; 2], 8>,
-        color: Padded<[f32; 3], 4>,
-    }
-
-    let all_points = (0..POINTS_NUM).into_iter().map(|_| 
-        Point {
-            pos: Padded([f32() * WIDTH as f32 / HEIGHT as f32, f32()]),
-            color: Padded([f32(), f32(), f32()]),
-        }
-    ).collect::<Vec<Point>>();
-    let points_buffer: Subbuffer<[Point]> = create_buffer(
-        queue.clone(), 
-        memory_allocator.clone(),
-        &cb_allocator,
-        BufferUsage::TRANSFER_DST | BufferUsage::STORAGE_BUFFER,
-        all_points.into_iter(),
-        POINTS_NUM as u64
-    );
-    let descriptor_set: Arc<PersistentDescriptorSet> = PersistentDescriptorSet::new(
+    let draw_descriptor_set: Arc<PersistentDescriptorSet> = PersistentDescriptorSet::new(
         &ds_allocator,
-        pipeline
+        draw_pipeline
             .layout()
             .set_layouts()
             .get(0)
@@ -262,35 +302,107 @@ fn main() {
         [
             WriteDescriptorSet::buffer(0, points_buffer.clone()),
         ],
-        [],
+        [
+
+        ],
     )
     .unwrap();
 
 
-    let buf = Buffer::from_iter(
-        memory_allocator,
-        BufferCreateInfo {
-            usage: BufferUsage::TRANSFER_DST,
-            ..Default::default()
-        },
-        AllocationCreateInfo {
-            memory_type_filter: MemoryTypeFilter::PREFER_HOST
-                | MemoryTypeFilter::HOST_RANDOM_ACCESS,
-            ..Default::default()
-        },
-        (0..WIDTH * HEIGHT * 4).map(|_| 0u8),
+    let update_pipeline: Arc<ComputePipeline> = {
+        let cs = update_s::load(device.clone())
+            .unwrap()
+            .entry_point("main")
+            .unwrap();
+        let stage = PipelineShaderStageCreateInfo::new(cs);
+        let layout = PipelineLayout::new(
+            device.clone(),
+            PipelineDescriptorSetLayoutCreateInfo::from_stages([&stage])
+                .into_pipeline_layout_create_info(device.clone())
+                .unwrap(),
+        )
+        .unwrap();
+        ComputePipeline::new(
+            device.clone(),
+            None,
+            ComputePipelineCreateInfo::stage_layout(stage, layout),
+        )
+        .unwrap()
+    };
+    let update_descriptor_set: Arc<PersistentDescriptorSet> = PersistentDescriptorSet::new(
+        &ds_allocator,
+        update_pipeline
+            .layout()
+            .set_layouts()
+            .get(0)
+            .unwrap()
+            .clone(),
+        [
+            WriteDescriptorSet::buffer(0, points_buffer.clone()),
+        ],
+        [
+
+        ],
     )
     .unwrap();
+
+    let viewport = Viewport {
+        offset: [0.0, 0.0],
+        extent: [WIDTH as f32, HEIGHT as f32],
+        depth_range: 0.0..=1.0,
+    };
 
     let start = Instant::now();
     (0..FRAMES_NUM).into_iter().for_each(|n| {
-        let mut builder = AutoCommandBufferBuilder::primary(
+        let current_instant = Instant::now();
+        let general_data: General = General {
+            resolution: [WIDTH as f32, HEIGHT as f32],
+            //
+            time: (current_instant-start).as_secs_f32(),
+            delta_time: 1.0 / FRAMERATE,
+            //
+            points_num: POINTS_NUM,
+            points_speed: POINTS_SPEED,
+        };
+
+        let mut update_builder = AutoCommandBufferBuilder::primary(
             &cb_allocator,
             queue.queue_family_index(),
             CommandBufferUsage::OneTimeSubmit,
         )
         .unwrap();
-        builder
+        update_builder
+            .push_constants(
+                update_pipeline.layout().clone(),
+                0,
+                general_data.clone())
+            .unwrap()
+            .bind_pipeline_compute(update_pipeline.clone())
+            .unwrap()
+            .bind_descriptor_sets(
+                PipelineBindPoint::Compute,
+                update_pipeline.layout().clone(),
+                0,
+                update_descriptor_set.clone(),
+            )
+            .unwrap()
+            .dispatch([POINTS_NUM/64 + 1, 1, 1])
+            .unwrap();
+        let update_command_buffer = update_builder.build().unwrap();
+        let finished = update_command_buffer.execute(queue.clone()).unwrap();
+        finished
+            .then_signal_fence_and_flush()
+            .unwrap()
+            .wait(None)
+            .unwrap();
+
+        let mut draw_builder = AutoCommandBufferBuilder::primary(
+            &cb_allocator,
+            queue.queue_family_index(),
+            CommandBufferUsage::OneTimeSubmit,
+        )
+        .unwrap();
+        draw_builder
             .begin_render_pass(
                 RenderPassBeginInfo {
                     clear_values: vec![None, None], // Some([0.0, 0.0, 0.0, 1.0].into())
@@ -301,22 +413,19 @@ fn main() {
             .unwrap()
             .set_viewport(0, [viewport.clone()].into_iter().collect())
             .unwrap()
-            .bind_pipeline_graphics(pipeline.clone())
+            .bind_pipeline_graphics(draw_pipeline.clone())
             .unwrap()
             .bind_descriptor_sets(
                 PipelineBindPoint::Graphics,
-                pipeline.layout().clone(),
+                draw_pipeline.layout().clone(),
                 0,
-                descriptor_set.clone(),
+                draw_descriptor_set.clone(),
             )
             .unwrap()
             .push_constants(
-                pipeline.layout().clone(),
+                draw_pipeline.layout().clone(),
                 0,
-                General {
-                    resolution: [WIDTH as f32, HEIGHT as f32],
-                    time: start.elapsed().as_secs_f32(),
-                }
+                general_data
             )
             .unwrap()
             .draw(6, 1, 0, 0)
@@ -325,9 +434,8 @@ fn main() {
             .unwrap()
             .copy_image_to_buffer(CopyImageToBufferInfo::image_buffer(image.clone(), buf.clone()))
             .unwrap();
-        let command_buffer = builder.build().unwrap();
-
-        let finished = command_buffer.execute(queue.clone()).unwrap();
+        let draw_command_buffer = draw_builder.build().unwrap();
+        let finished = draw_command_buffer.execute(queue.clone()).unwrap();
         finished
             .then_signal_fence_and_flush()
             .unwrap()
