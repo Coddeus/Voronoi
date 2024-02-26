@@ -21,11 +21,11 @@ use vulkano::{
 
 const WIDTH: u32 = 1920;
 const HEIGHT: u32 = 1080;
-const FRAMES_NUM: u32 = 600;
+const FRAMES_NUM: u32 = 60 * 10; // 10 seconds
 const FRAMERATE: f32 = 60.0;
 //
-const POINTS_NUM: u32 = 100;
-const POINTS_SPEED: f32 = 0.3;
+const POINTS_NUM: u32 = 30;
+const POINTS_SPEED: f32 = 0.5;
 
 
 mod vert_s {
@@ -144,7 +144,7 @@ fn main() {
         Point {
             pos: [f32() * WIDTH as f32 / HEIGHT as f32, f32()],
             dir: [f32()*2.0-1.0, f32()*2.0-1.0],
-            color: [col, 0.0, 0.0, 1.0],
+            color: [f32(), f32(), f32(), 1.0],
         }
 }   ).collect::<Vec<Point>>();
     println!("{:?}", all_points);
