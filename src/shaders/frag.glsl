@@ -1,8 +1,6 @@
 #version 460
 
 // Layout data
-layout(location = 0) in flat int color;
-
 layout(location = 0) out vec4 Color;
 
 struct Point {
@@ -32,34 +30,17 @@ void per_sample() {
 }
 
 // Distance functions  // return (float(closest_point_i), dist)
-vec3 distance_euclidean() {
-    int closest_point_i = 0;
-    float min_dist_squared = 100.0;
-    float min_dist_diff = 100.0;
-    Color = vec4(0.0, 0.0, 0.0, 1.0);
-
-    for (int i=0; i<gen.points_num; i++) {
-        float dist_squared = pow(p.p[i].points_pos.x - gl_FragCoord.x / gen.u_resolution.y, 2) + pow(p.p[i].points_pos.y - gl_FragCoord.y / gen.u_resolution.y, 2);
-        if (dist_squared < min_dist_squared) {
-            min_dist_diff = sqrt(min_dist_squared) - sqrt(dist_squared);
-            min_dist_squared = dist_squared;
-            closest_point_i = i;
-        }
-    }
-
-    return vec3(closest_point_i, sqrt(min_dist_squared), min_dist_diff);
-}
 vec3 distance_manhattan(float power) {
     int closest_point_i = 0;
     float min_dist = 100.0;
     float min_dist_diff = 100.0;
     Color = vec4(0.0, 0.0, 0.0, 1.0);
 
+    float fragx = gl_FragCoord.x / gen.u_resolution.y;
+    float fragy = gl_FragCoord.y / gen.u_resolution.y;
     for (int i=0; i<gen.points_num; i++) {
-        float dx = abs(p.p[i].points_pos.x - gl_FragCoord.x / gen.u_resolution.y);
-        float dy = abs(p.p[i].points_pos.y - gl_FragCoord.y / gen.u_resolution.y);
-        float rx = gen.u_resolution.x / gen.u_resolution.y;
-        float ry = 1.0;
+        float dx = abs(p.p[i].points_pos.x - fragx);
+        float dy = abs(p.p[i].points_pos.y - fragy);
         float dist = pow(abs(pow(dx, power)) + abs(pow(dy, power)), 1.0/power);
         if (dist < min_dist) {
             min_dist_diff = min_dist - dist;
@@ -69,6 +50,24 @@ vec3 distance_manhattan(float power) {
     }
 
     return vec3(closest_point_i, min_dist, min_dist_diff);
+}
+vec3 distance_euclidean() {
+    return distance_manhattan(2.0);
+    // int closest_point_i = 0;
+    // float min_dist_squared = 100.0;
+    // float min_dist_diff = 100.0;
+    // Color = vec4(0.0, 0.0, 0.0, 1.0);
+
+    // for (int i=0; i<gen.points_num; i++) {
+    //     float dist_squared = pow(p.p[i].points_pos.x - gl_FragCoord.x / gen.u_resolution.y, 2) + pow(p.p[i].points_pos.y - gl_FragCoord.y / gen.u_resolution.y, 2);
+    //     if (dist_squared < min_dist_squared) {
+    //         min_dist_diff = sqrt(min_dist_squared) - sqrt(dist_squared);
+    //         min_dist_squared = dist_squared;
+    //         closest_point_i = i;
+    //     }
+    // }
+
+    // return vec3(closest_point_i, sqrt(min_dist_squared), min_dist_diff);
 }
 
 // Coloring functions
@@ -104,8 +103,11 @@ void color_point(vec3 closest) {
 void main() {
     per_sample();
 
-    vec3 closest = distance_manhattan(1.0);
+    vec2 st = gl_FragCoord.xy / gen.u_resolution;
+    float p = (st.x * st.x + 0.033) * 3.0;
+    vec3 closest = distance_manhattan(p);
     color_full(closest);
-    color_border_cells(closest, 2.0);
+    p = (st.y * st.y * st.y * st.y) * 5.0;
+    color_border_cells(closest, p);
     color_point(closest);
 }

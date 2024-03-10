@@ -19,12 +19,12 @@ use vulkano::{
 };
 
 
-const WIDTH: u32 = 1920;
-const HEIGHT: u32 = 1080;
+const WIDTH: u32 = 1280;
+const HEIGHT: u32 = 720;
 const FRAMES_NUM: u32 = 60 * 10; // 10 seconds
 const FRAMERATE: f32 = 60.0;
 //
-const POINTS_NUM: u32 = 30;
+const POINTS_NUM: u32 = 20;
 const POINTS_SPEED: f32 = 0.5;
 
 
@@ -140,14 +140,13 @@ fn main() {
     }
 
     let all_points = (0..POINTS_NUM).into_iter().map(|_| {
-        let col = f32();
         Point {
             pos: [f32() * WIDTH as f32 / HEIGHT as f32, f32()],
             dir: [f32()*2.0-1.0, f32()*2.0-1.0],
             color: [f32(), f32(), f32(), 1.0],
         }
-}   ).collect::<Vec<Point>>();
-    println!("{:?}", all_points);
+    }).collect::<Vec<Point>>();
+    // println!("{:?}", all_points);
     let points_buffer: Subbuffer<[Point]> = create_buffer(
         queue.clone(), 
         memory_allocator.clone(),

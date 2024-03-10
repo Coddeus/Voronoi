@@ -4,3 +4,7 @@ Cargo.lock
 /output
 **.mp4
 **.png
+!t1.png
+!t2.png
+
+/voronoi
