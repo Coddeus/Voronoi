@@ -30,11 +30,30 @@ void per_sample() {
 }
 
 // Distance functions  // return (float(closest_point_i), dist)
-vec3 distance_manhattan(float power) {
+vec3 distance_euclid() {
+    int closest_point_i = 0;
+    float min_dist_squared = 100.0;
+    float min_dist_diff = 100.0;
+
+    float fragx = gl_FragCoord.x / gen.u_resolution.y;
+    float fragy = gl_FragCoord.y / gen.u_resolution.y;
+    for (int i=0; i<gen.points_num; i++) {
+        float dx = p.p[i].points_pos.x - fragx;
+        float dy = p.p[i].points_pos.y - fragy;
+        float dist_squared = dx*dx + dy*dy;
+        if (dist_squared < min_dist_squared) {
+            min_dist_diff = sqrt(min_dist_squared) - sqrt(dist_squared);
+            min_dist_squared = dist_squared;
+            closest_point_i = i;
+        }
+    }
+
+    return vec3(closest_point_i, sqrt(min_dist_squared), min_dist_diff);
+}
+vec3 distance_minkowski(float power) {
     int closest_point_i = 0;
     float min_dist = 100.0;
     float min_dist_diff = 100.0;
-    Color = vec4(0.0, 0.0, 0.0, 1.0);
 
     float fragx = gl_FragCoord.x / gen.u_resolution.y;
     float fragy = gl_FragCoord.y / gen.u_resolution.y;
@@ -51,23 +70,25 @@ vec3 distance_manhattan(float power) {
 
     return vec3(closest_point_i, min_dist, min_dist_diff);
 }
-vec3 distance_euclidean() {
-    return distance_manhattan(2.0);
-    // int closest_point_i = 0;
-    // float min_dist_squared = 100.0;
-    // float min_dist_diff = 100.0;
-    // Color = vec4(0.0, 0.0, 0.0, 1.0);
+vec3 distance_chebyshev() {
+    int closest_point_i = 0;
+    float min_dist = 100.0;
+    float min_dist_diff = 100.0;
 
-    // for (int i=0; i<gen.points_num; i++) {
-    //     float dist_squared = pow(p.p[i].points_pos.x - gl_FragCoord.x / gen.u_resolution.y, 2) + pow(p.p[i].points_pos.y - gl_FragCoord.y / gen.u_resolution.y, 2);
-    //     if (dist_squared < min_dist_squared) {
-    //         min_dist_diff = sqrt(min_dist_squared) - sqrt(dist_squared);
-    //         min_dist_squared = dist_squared;
-    //         closest_point_i = i;
-    //     }
-    // }
+    float fragx = gl_FragCoord.x / gen.u_resolution.y;
+    float fragy = gl_FragCoord.y / gen.u_resolution.y;
+    for (int i=0; i<gen.points_num; i++) {
+        float dx = abs(p.p[i].points_pos.x - fragx);
+        float dy = abs(p.p[i].points_pos.y - fragy);
+        float dist = max(dx, dy);
+        if (dist < min_dist) {
+            min_dist_diff = sqrt(min_dist) - sqrt(dist);
+            min_dist = dist;
+            closest_point_i = i;
+        }
+    }
 
-    // return vec3(closest_point_i, sqrt(min_dist_squared), min_dist_diff);
+    return vec3(closest_point_i, sqrt(min_dist), min_dist_diff);
 }
 
 // Coloring functions
@@ -102,12 +123,23 @@ void color_point(vec3 closest) {
 
 void main() {
     per_sample();
+    Color = vec4(0.0, 0.0, 0.0, 1.0);
 
     vec2 st = gl_FragCoord.xy / gen.u_resolution;
-    float p = (st.x * st.x + 0.033) * 3.0;
-    vec3 closest = distance_manhattan(p);
+    // float p = (st.x * st.x + 0.033) * 3.0;
+
+    vec3 closest;
+    if (gen.u_time < 2.0) {
+        closest = distance_euclid();
+    } else if (gen.u_time < 4.0) {
+        closest = distance_minkowski(1.0);
+    } else if (gen.u_time < 6.0) {
+        closest = distance_minkowski(3.0);
+    } else {
+        closest = distance_chebyshev();
+    }
     color_full(closest);
-    p = (st.y * st.y * st.y * st.y) * 5.0;
-    color_border_cells(closest, p);
+    // p = (st.y * st.y * st.y * st.y) * 5.0;
+    // color_border_cells(closest, p);
     color_point(closest);
 }

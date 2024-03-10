@@ -5,7 +5,7 @@ use vulkano::{
         allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, CommandBufferUsage, CopyBufferInfo, CopyImageToBufferInfo, PrimaryAutoCommandBuffer, PrimaryCommandBufferAbstract, RenderPassBeginInfo
     }, descriptor_set::{allocator::StandardDescriptorSetAllocator, PersistentDescriptorSet, WriteDescriptorSet}, device::{
         physical::PhysicalDeviceType, Device, DeviceCreateInfo, DeviceExtensions, Features, Queue, QueueCreateInfo, QueueFlags
-    }, format::Format, image::{view::ImageView, Image, ImageCreateInfo, ImageType, ImageUsage, SampleCount}, instance::{Instance, InstanceCreateFlags, InstanceCreateInfo}, memory::allocator::{AllocationCreateInfo, MemoryAllocator, MemoryTypeFilter, StandardMemoryAllocator}, padded::Padded, pipeline::{
+    }, format::Format, image::{view::ImageView, Image, ImageCreateInfo, ImageType, ImageUsage, SampleCount}, instance::{Instance, InstanceCreateFlags, InstanceCreateInfo}, memory::allocator::{AllocationCreateInfo, MemoryAllocator, MemoryTypeFilter, StandardMemoryAllocator}, pipeline::{
         compute::ComputePipelineCreateInfo, graphics::{
             color_blend::{ColorBlendAttachmentState, ColorBlendState},
             input_assembly::InputAssemblyState,
@@ -19,8 +19,8 @@ use vulkano::{
 };
 
 
-const WIDTH: u32 = 1280;
-const HEIGHT: u32 = 720;
+const WIDTH: u32 = 1920;
+const HEIGHT: u32 = 1080;
 const FRAMES_NUM: u32 = 60 * 10; // 10 seconds
 const FRAMERATE: f32 = 60.0;
 //
@@ -352,12 +352,12 @@ fn main() {
     };
 
     let start = Instant::now();
-    (0..FRAMES_NUM).into_iter().for_each(|n| {
-        let current_instant = Instant::now();
+    (0..FRAMES_NUM).into_iter().for_each(|frame_i| {
+        // let current_instant = Instant::now();
         let general_data: General = General {
             resolution: [WIDTH as f32, HEIGHT as f32],
             //
-            time: (current_instant-start).as_secs_f32(),
+            time: frame_i as f32 / FRAMERATE,
             delta_time: 1.0 / FRAMERATE,
             //
             points_num: POINTS_NUM,
@@ -442,7 +442,7 @@ fn main() {
             .unwrap();
 
         let buffer_content = buf.read().unwrap();
-        let filename = format!("output/{:09}.png", n);
+        let filename = format!("output/{:09}.png", frame_i);
         let path = Path::new(filename.as_str());
         let file = File::create(path).unwrap();
         let w = &mut BufWriter::new(file);
