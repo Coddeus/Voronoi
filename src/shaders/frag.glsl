@@ -88,7 +88,7 @@ vec3 distance_chebyshev() {
         }
     }
 
-    return vec3(closest_point_i, sqrt(min_dist), min_dist_diff);
+    return vec3(closest_point_i, min_dist, min_dist_diff);
 }
 
 // Coloring functions
