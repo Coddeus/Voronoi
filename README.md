@@ -1,4 +1,5 @@
 # Voronoi
+This project generates images of Voronoi diagrams in the `output` folder. 
 
 ## Prerequisites
 - A Vulkan-compatible computer
@@ -10,8 +11,7 @@
 ### First time, beforehand
 Create a folder named `output` in the cloned project root.
 ### Every time
-If generating less frames than previously, you can empty the `output` folder manually so the excess frames are'nt concatenated in the video.
-I use FFmpeg to concat the output images into a video.  
+After the images generation, I use FFmpeg to concat the output images into a video.  
 Useful commands:
 ``` bash
 # Dev
