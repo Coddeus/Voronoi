@@ -73,5 +73,7 @@ void update_pos_contained(uint idx) {
 void main() {
     uint idx = gl_GlobalInvocationID.x;
 
-    update_pos_contained(idx);
+    if (gen.time > 5.0) {
+        update_pos_contained(idx);
+    }
 }

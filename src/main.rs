@@ -21,7 +21,7 @@ use vulkano::{
 
 const WIDTH: u32 = 1920;
 const HEIGHT: u32 = 1080;
-const FRAMES_NUM: u32 = 60 * 10; // 10 seconds
+const FRAMES_NUM: u32 = 60 * 11; // 11 seconds
 const FRAMERATE: f32 = 60.0;
 //
 const POINTS_NUM: u32 = 20;
@@ -115,63 +115,6 @@ fn main() {
     let cb_allocator = StandardCommandBufferAllocator::new(device.clone(), Default::default());
     let ds_allocator = StandardDescriptorSetAllocator::new(device.clone(), Default::default());
 
-    // ---------------------------------------------------------------------------------------------------- Buffers & push constants
-
-    // Push constants struct
-    #[derive(BufferContents, Clone)]
-    #[repr(C)]
-    struct General {
-        resolution: [f32; 2],
-        //
-        time: f32,
-        delta_time: f32,
-        //
-        points_num: u32,
-        points_speed: f32,
-    }
-
-    // Points Buffer
-    #[derive(BufferContents, Debug)]
-    #[repr(C)]
-    struct Point {
-        pos: [f32; 2],
-        dir: [f32; 2],
-        color: [f32; 4],
-    }
-
-    let all_points = (0..POINTS_NUM).into_iter().map(|_| {
-        Point {
-            pos: [f32() * WIDTH as f32 / HEIGHT as f32, f32()],
-            dir: [f32()*2.0-1.0, f32()*2.0-1.0],
-            color: [f32(), f32(), f32(), 1.0],
-        }
-    }).collect::<Vec<Point>>();
-    // println!("{:?}", all_points);
-    let points_buffer: Subbuffer<[Point]> = create_buffer(
-        queue.clone(), 
-        memory_allocator.clone(),
-        &cb_allocator,
-        BufferUsage::TRANSFER_DST | BufferUsage::STORAGE_BUFFER,
-        all_points.into_iter(),
-        POINTS_NUM as u64
-    );
-
-    // Output buffer, converted to png image
-    let buf = Buffer::from_iter(
-        memory_allocator.clone(),
-        BufferCreateInfo {
-            usage: BufferUsage::TRANSFER_DST,
-            ..Default::default()
-        },
-        AllocationCreateInfo {
-            memory_type_filter: MemoryTypeFilter::PREFER_HOST
-                | MemoryTypeFilter::HOST_RANDOM_ACCESS,
-            ..Default::default()
-        },
-        (0..WIDTH * HEIGHT * 4).map(|_| 0u8),
-    )
-    .unwrap();
-
     // ---------------------------------------------------------------------------------------------------- Images
 
     // Multisample image
@@ -243,6 +186,65 @@ fn main() {
     )
     .unwrap();
 
+    // ---------------------------------------------------------------------------------------------------- Buffers & push constants
+
+    // Push constants struct
+    #[derive(BufferContents, Clone)]
+    #[repr(C)]
+    struct General {
+        resolution: [f32; 2],
+        //
+        time: f32,
+        delta_time: f32,
+        //
+        points_num: u32,
+        points_speed: f32,
+    }
+
+    // Points Buffer
+    #[derive(BufferContents, Debug)]
+    #[repr(C)]
+    struct Point {
+        pos: [f32; 2],
+        dir: [f32; 2],
+        color: [f32; 4],
+    }
+
+    let all_points = (0..POINTS_NUM).into_iter().map(|_| {
+        Point {
+            pos: [f32() * WIDTH as f32 / HEIGHT as f32, f32()],
+            dir: [f32()*2.0-1.0, f32()*2.0-1.0],
+            color: [f32(), f32(), f32(), 1.0],
+        }
+    }).collect::<Vec<Point>>();
+    // println!("{:?}", all_points);
+    let points_buffer: Subbuffer<[Point]> = create_buffer(
+        queue.clone(), 
+        memory_allocator.clone(),
+        &cb_allocator,
+        BufferUsage::TRANSFER_DST | BufferUsage::STORAGE_BUFFER,
+        all_points.into_iter(),
+        POINTS_NUM as u64
+    );
+
+    // Output buffer, converted to png image
+    let buf = Buffer::from_iter(
+        memory_allocator.clone(),
+        BufferCreateInfo {
+            usage: BufferUsage::TRANSFER_DST,
+            ..Default::default()
+        },
+        AllocationCreateInfo {
+            memory_type_filter: MemoryTypeFilter::PREFER_HOST
+                | MemoryTypeFilter::HOST_RANDOM_ACCESS,
+            ..Default::default()
+        },
+        (0..WIDTH * HEIGHT * 4).map(|_| 0u8),
+    )
+    .unwrap();
+
+    // ---------------------------------------------------------------------------------------------------- Pipelines
+
     let draw_pipeline = {
         let vs = vert_s::load(device.clone())
             .unwrap()
@@ -307,7 +309,6 @@ fn main() {
     )
     .unwrap();
 
-
     let update_pipeline: Arc<ComputePipeline> = {
         let cs = update_s::load(device.clone())
             .unwrap()
@@ -345,6 +346,9 @@ fn main() {
     )
     .unwrap();
 
+    
+    // ---------------------------------------------------------------------------------------------------- Loop
+
     let viewport = Viewport {
         offset: [0.0, 0.0],
         extent: [WIDTH as f32, HEIGHT as f32],
@@ -361,7 +365,9 @@ fn main() {
             delta_time: 1.0 / FRAMERATE,
             //
             points_num: POINTS_NUM,
-            points_speed: POINTS_SPEED,
+            points_speed: if frame_i as f32 / FRAMERATE < 5.0 { 0.0 }
+                else if frame_i as f32 / FRAMERATE < 7.0 { POINTS_SPEED * (frame_i as f32 / FRAMERATE - 5.0) / 2.0 }
+                else { POINTS_SPEED },
         };
 
         let mut update_builder = AutoCommandBufferBuilder::primary(
